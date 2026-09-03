@@ -8,7 +8,7 @@
 <!-- badges.specs.end -->
 
 
-**This Magento 2 module is an add-on package to the LokiCheckout.**
+> This Magento 2 module adds CLI commands to manage checkout agreements
 
 ### Installation
 Install this package via composer:
