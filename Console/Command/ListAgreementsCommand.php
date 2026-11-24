@@ -9,12 +9,14 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Yireo\CheckoutAgreementCommands\Console\OutputSanitizer;
 
 class ListAgreementsCommand extends Command
 {
     public function __construct(
-        private CheckoutAgreementsListInterface $agreementsList,
-        private SearchCriteriaBuilder $searchCriteriaBuilder,
+        private readonly CheckoutAgreementsListInterface $agreementsList,
+        private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
+        private readonly OutputSanitizer $outputSanitizer,
         ?string $name = null
     ) {
         parent::__construct($name);
@@ -43,11 +45,11 @@ class ListAgreementsCommand extends Command
         $agreements = $this->agreementsList->getList($this->searchCriteriaBuilder->create());
         foreach ($agreements as $agreement) {
             $table->addRow([
-                $agreement->getId(),
-                $agreement->getName(),
-                $agreement->getMode(),
-                $agreement->getIsActive(),
-                $agreement->getIsHtml(),
+                (int)$agreement->getAgreementId(),
+                $this->outputSanitizer->sanitize($agreement->getName()),
+                (int)$agreement->getMode(),
+                (int)$agreement->getIsActive(),
+                (int)$agreement->getIsHtml(),
             ]);
         }
 
