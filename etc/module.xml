@@ -3,6 +3,7 @@
     <module name="Yireo_CheckoutAgreementCommands">
         <sequence>
             <module name="Magento_CheckoutAgreements"/>
+            <module name="Magento_Store"/>
         </sequence>
     </module>
 </config>

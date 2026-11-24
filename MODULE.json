@@ -2,7 +2,8 @@
     "module_name": "Yireo_CheckoutAgreementCommands",
     "composer_name": "yireo/magento2-checkout-agreement-commands",
     "sequence": [
-        "Magento_CheckoutAgreements"
+        "Magento_CheckoutAgreements",
+        "Magento_Store"
     ],
     "phpcs_severity": "7",
     "phpstan_level": "1"
