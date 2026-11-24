@@ -19,7 +19,7 @@ jobs:
     outputs:
       has_tests: ${{ steps.check.outputs.has_tests }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: Test/Playwright
 
@@ -52,7 +52,6 @@ jobs:
       MAGENTO_ADMIN_LASTNAME: "User"
       MAGENTO_ADMIN_EMAIL: "admin@example.com"
       MAGENTO_ADMIN_USER: "admin"
-      MAGENTO_ADMIN_PASSWORD: "Admin123!@#"
       MAGENTO_LANGUAGE: "en_US"
       MAGENTO_CURRENCY: "USD"
       MAGENTO_TIMEZONE: "UTC"
@@ -106,7 +105,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -160,7 +159,7 @@ jobs:
 
       - name: Restore Composer cache
         if: github.event.pull_request.head.repo.fork != true && !env.ACT
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: /tmp/composer-cache
           key: composer-playwright-${{ env.MAGENTO_VERSION }}-${{ hashFiles('composer.json') }}
@@ -203,11 +202,18 @@ jobs:
               hyva-themes/magento2-graphql-tokens \
               hyva-themes/magento2-graphql-view-model \
               hyva-themes/magento2-compat-module-fallback
+            rm -f "$(composer config --global home)/auth.json"
           '
 
       - name: Copy Composer cache out of PHP container
         if: github.event.pull_request.head.repo.fork != true && !env.ACT
         run: docker cp "$PHP_CONTAINER:$COMPOSER_CACHE_DIR/." /tmp/composer-cache/
+
+      - name: Generate throwaway credentials
+        run: |
+          FUNCTIONAL_TESTS_TOKEN=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          echo "::add-mask::$FUNCTIONAL_TESTS_TOKEN"
+          echo "FUNCTIONAL_TESTS_TOKEN=$FUNCTIONAL_TESTS_TOKEN" >> "$GITHUB_ENV"
 
       - name: Setup Magento
         run: |
@@ -218,10 +224,13 @@ jobs:
           docker exec \
             -u root \
             -e COMPOSER_NAME \
+            -e FUNCTIONAL_TESTS_TOKEN \
             $ENV_ARGS \
             "$PHP_CONTAINER" bash -lc '
             set -e
             cd /tmp/magento
+            MAGENTO_ADMIN_PASSWORD="Ci1!$(head -c 16 /dev/urandom | od -An -tx1 | tr -d " \n")"
+            export MAGENTO_ADMIN_PASSWORD
             GITHUB_WORKSPACE=/tmp/magento/package-source /tmp/magento/package-source/.github/workflows/magento-install.sh
             bin/magento module:disable Magento_AdminAdobeImsTwoFactorAuth Magento_TwoFactorAuth
             bin/magento module:enable Yireo_EnableModuleSequence
@@ -235,7 +244,7 @@ jobs:
             bin/magento setup:static-content:deploy -f --area frontend --area adminhtml en_US
             bin/magento loki-checkout:sample-data:install
             bin/magento loki:functional-tests:modules:dump
-            bin/magento config:set loki/functional_tests/token loki
+            bin/magento config:set loki/functional_tests/token "$FUNCTIONAL_TESTS_TOKEN"
             bin/magento cache:flush config
           '
 
@@ -254,7 +263,7 @@ jobs:
 
       - name: Restore npm cache
         if: ${{ !env.ACT }}
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.npm
           key: npm-${{ steps.npm-cache-key.outputs.hash }}
@@ -273,6 +282,16 @@ jobs:
           done
           echo "ERROR: Magento front-end not reachable"; exit 1
 
+      - name: Install npm dependencies
+        working-directory: /tmp/magento/vendor/loki/magento2-functional-tests/Test/Playwright/
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --ignore-scripts
+          else
+            npm install --prefer-offline --no-audit --no-fund --ignore-scripts
+          fi
+          npx playwright install --only-shell chromium
+
       - name: Run Playwright tests
         working-directory: /tmp/magento/vendor/loki/magento2-functional-tests/Test/Playwright/
         env:
@@ -284,16 +303,8 @@ jobs:
           PLAYWRIGHT_MAX_FAILURES: ${{ vars.PLAYWRIGHT_MAX_FAILURES || '5' }}
           NODE_TLS_REJECT_UNAUTHORIZED: "0"
         run: |
-          echo "Installing npm dependencies..."
-          if [ -f package-lock.json ]; then
-            npm ci --prefer-offline
-          else
-            npm install --prefer-offline --no-audit --no-fund
-          fi
-          npx playwright install --only-shell chromium
-
           echo "Creating /tmp/magento/.env.playwright..."
-          printf "TEST_URL=%s\nTEST_TOKEN=loki\nMODULE_NAME=%s\n" "${MAGENTO_BASE_URL}" "${MAGENTO_MODULE}" > /tmp/magento/.env.playwright
+          printf "TEST_URL=%s\nTEST_TOKEN=%s\nMODULE_NAME=%s\n" "${MAGENTO_BASE_URL}" "${FUNCTIONAL_TESTS_TOKEN}" "${MAGENTO_MODULE}" > /tmp/magento/.env.playwright
 
           echo "Running Playwright tests for project ${MAGENTO_MODULE}"
           npx playwright test \
