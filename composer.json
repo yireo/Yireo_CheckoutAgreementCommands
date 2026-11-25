@@ -1,6 +1,6 @@
 {
     "name": "yireo/magento2-checkout-agreement-commands",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "Magento 2 module adding CLI commands to list and create checkout agreements",
     "type": "magento2-module",
     "require": {
