@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 27 November 2026
+### Changed
+- The `configure()` method of the console commands `checkout_agreement:create` and `checkout_agreement:list` now declares a `void` return type, matching the Symfony Console signature
+
 ## [2.0.0] - 25 November 2026
 ### Added
 - Support for PHP 8.5
