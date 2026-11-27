@@ -28,7 +28,7 @@ class CreateAgreementCommand extends Command
         parent::__construct($name);
     }
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('checkout_agreement:create');
         $this->setDescription('Create an agreement');

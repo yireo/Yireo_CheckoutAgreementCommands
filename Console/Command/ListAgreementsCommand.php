@@ -22,7 +22,7 @@ class ListAgreementsCommand extends Command
         parent::__construct($name);
     }
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('checkout_agreement:list');
         $this->setDescription('List all agreements');
