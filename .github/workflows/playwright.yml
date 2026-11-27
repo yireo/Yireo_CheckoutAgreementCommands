@@ -122,6 +122,8 @@ jobs:
           [[ "$MAGENTO_MODULE" =~ ^[A-Za-z0-9]+_[A-Za-z0-9]+$ ]] || { echo "::error::Invalid module name"; exit 1; }
           echo "COMPOSER_NAME=$COMPOSER_NAME" >> "$GITHUB_ENV"
           echo "MAGENTO_MODULE=$MAGENTO_MODULE" >> "$GITHUB_ENV"
+          COMPOSER_DEV_REQUIREMENTS=$(jq -r '.["require-dev"] // {} | del(."phpunit/phpunit") | to_entries | map("\(.key):\(.value|gsub("[[:space:]]+"; ""))") | join(" ")' composer.json)
+          echo "COMPOSER_DEV_REQUIREMENTS=$COMPOSER_DEV_REQUIREMENTS" >> "$GITHUB_ENV"
           PHP_CONTAINER="${{ job.services.php.id }}"
           if [ -z "$PHP_CONTAINER" ] && [ -n "$ACT" ]; then
             # act does not expose service container IDs, so look it up via the job network
@@ -186,6 +188,7 @@ jobs:
           docker exec \
             -u root \
             -e COMPOSER_NAME \
+            -e COMPOSER_DEV_REQUIREMENTS \
             "$PHP_CONTAINER" bash -lc '
             set -e
             cd /tmp/magento
@@ -207,6 +210,7 @@ jobs:
               hyva-themes/magento2-graphql-tokens \
               hyva-themes/magento2-graphql-view-model \
               hyva-themes/magento2-compat-module-fallback
+            test -z "${COMPOSER_DEV_REQUIREMENTS}" || composer require -n --dev --prefer-dist --with-all-dependencies -- ${COMPOSER_DEV_REQUIREMENTS}
           '
 
       - name: Copy Composer cache out of PHP container
@@ -235,7 +239,7 @@ jobs:
                 EXTRA_MODULES="LokiCheckout_CoreCli LokiCheckout_Csp LokiCheckout_FunctionalTests LokiCheckout_Luma LokiCheckout_Hyva LokiCheckout_SampleData"
                 ;;
             esac
-            bin/magento module:sequence Loki_FunctionalTests Hyva_Theme Hyva_BaseLayoutReset Hyva_Email Hyva_GraphqlTokens Hyva_GraphqlViewModel Hyva_OrderCancellationWebapi Hyva_CompatModuleFallback ${EXTRA_MODULES} ${MAGENTO_MODULE}
+            bin/magento module:sequence -n Loki_FunctionalTests Hyva_Theme Hyva_BaseLayoutReset Hyva_Email Hyva_GraphqlTokens Hyva_GraphqlViewModel Hyva_OrderCancellationWebapi Hyva_CompatModuleFallback ${EXTRA_MODULES} ${MAGENTO_MODULE}
             bin/magento setup:upgrade
             bin/magento config:set dev/static/sign 0
             bin/magento setup:static-content:deploy -f --area frontend --area adminhtml en_US
