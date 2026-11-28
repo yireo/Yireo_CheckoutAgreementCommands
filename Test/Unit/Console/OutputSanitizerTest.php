@@ -50,6 +50,23 @@ class OutputSanitizerTest extends TestCase
             'null byte and del' => ["Foo\x00\x7fBar", 'FooBar'],
             'c1 control' => ["Foo\xc2\x9bBar", 'FooBar'],
             'single escape' => ["Foo\x1bcBar", 'FooBar'],
+            'float' => [1.5, '1.5'],
+            'true' => [true, '1'],
+            'false' => [false, ''],
+            'stringable' => [new class {
+                public function __toString(): string
+                {
+                    return "Foo\x1b[31mBar";
+                }
+            }, 'FooBar'],
         ];
+    }
+
+    public function testCombinedEscapeSequencesAndFormatterTagsAreRenderedLiterally(): void
+    {
+        $sanitized = (new OutputSanitizer())->sanitize("\x1b[2J<error>Foo\x07</error>\x1b]0;Owned\x07\r\n<info>Bar</info>");
+        $rendered = (new OutputFormatter(true))->format($sanitized);
+
+        $this->assertSame('<error>Foo</error><info>Bar</info>', $rendered);
     }
 }
