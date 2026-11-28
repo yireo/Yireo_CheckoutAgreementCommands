@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Yireo\CheckoutAgreementCommands\Test\Integration\Console\Command;
 
+use Magento\CheckoutAgreements\Model\AgreementsConfigProvider;
 use Magento\CheckoutAgreements\Model\ResourceModel\Agreement\Collection;
 use Magento\CheckoutAgreements\Model\ResourceModel\Agreement\CollectionFactory;
 use Magento\Framework\Console\CommandListInterface;
@@ -12,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Yireo\CheckoutAgreementCommands\Console\Command\CreateAgreementCommand;
+use Yireo\CheckoutAgreementCommands\Console\Command\ListAgreementsCommand;
 
 /**
  * @magentoDbIsolation enabled
@@ -73,6 +75,81 @@ class CreateAgreementCommandTest extends TestCase
         $this->assertSame([1], array_map('intval', (array)$agreement->getStores()));
     }
 
+    public function testSavesInactiveAutomaticAgreementWithTrimmedValues(): void
+    {
+        $name = self::NAME . ' ' . str_repeat('é', 255 - mb_strlen(self::NAME) - 1);
+        $commandTester = $this->getCommandTester();
+        $commandTester->execute([
+            '--name' => " \t" . $name . "\n",
+            '--content' => "\n Content \n",
+            '--checkbox_text' => "\x00I agree\t",
+            '--is_active' => '0',
+            '--mode' => '0',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $commandTester->getStatusCode());
+
+        $collection = Bootstrap::getObjectManager()->get(CollectionFactory::class)->create();
+        $collection->addFieldToFilter('name', $name);
+        $this->assertCount(1, $collection);
+
+        $agreement = $collection->getFirstItem();
+        $this->assertSame($name, $agreement->getName());
+        $this->assertSame('Content', $agreement->getContent());
+        $this->assertSame('I agree', $agreement->getCheckboxText());
+        $this->assertSame(0, (int)$agreement->getIsActive());
+        $this->assertSame(0, (int)$agreement->getMode());
+    }
+
+    /**
+     * @magentoConfigFixture current_store checkout/options/enable_agreements 1
+     */
+    public function testCreatedAgreementsAreProvidedToTheCheckout(): void
+    {
+        $plainId = $this->createAgreement(['--content' => "<b>Plain</b>\nText", '--checkbox_text' => '<i>Plain</i>']);
+        $htmlId = $this->createAgreement([
+            '--content' => '<b>Html</b>',
+            '--checkbox_text' => '<i>Html</i>',
+            '--is_html' => '1',
+            '--mode' => '0',
+            '--store_id' => '1',
+        ]);
+        $inactiveId = $this->createAgreement(['--is_active' => '0']);
+
+        $config = Bootstrap::getObjectManager()->create(AgreementsConfigProvider::class)->getConfig();
+        $this->assertTrue($config['checkoutAgreements']['isEnabled']);
+
+        $agreements = [];
+        foreach ($config['checkoutAgreements']['agreements'] as $agreement) {
+            $agreements[(int)$agreement['agreementId']] = $agreement;
+        }
+
+        $this->assertArrayNotHasKey($inactiveId, $agreements);
+
+        $this->assertArrayHasKey($plainId, $agreements);
+        $this->assertSame("&lt;b&gt;Plain&lt;/b&gt;<br />\nText", $agreements[$plainId]['content']);
+        $this->assertSame('&lt;i&gt;Plain&lt;/i&gt;', $agreements[$plainId]['checkboxText']);
+        $this->assertSame(1, (int)$agreements[$plainId]['mode']);
+
+        $this->assertArrayHasKey($htmlId, $agreements);
+        $this->assertSame('<b>Html</b>', $agreements[$htmlId]['content']);
+        $this->assertSame('<i>Html</i>', $agreements[$htmlId]['checkboxText']);
+        $this->assertSame(0, (int)$agreements[$htmlId]['mode']);
+    }
+
+    public function testCreatedAgreementIsListed(): void
+    {
+        $agreementId = $this->createAgreement();
+
+        $commandTester = new CommandTester(Bootstrap::getObjectManager()->create(ListAgreementsCommand::class));
+        $commandTester->execute([], ['decorated' => false]);
+
+        $this->assertMatchesRegularExpression(
+            '/\|\s+' . $agreementId . '\s+\|\s+' . preg_quote(self::NAME, '/') . '\s+\|\s+1\s+\|\s+1\s+\|\s+0\s+\|/',
+            $commandTester->getDisplay()
+        );
+    }
+
     #[DataProvider('getInvalidOptions')]
     public function testRejectsInvalidInput(array $options, string $expectedError): void
     {
@@ -100,6 +177,21 @@ class CreateAgreementCommandTest extends TestCase
             'negative store' => [['--store_id' => '-1'], '"store_id" must be'],
             'unknown store' => [['--store_id' => '999999'], '"store_id" must be'],
         ];
+    }
+
+    private function createAgreement(array $options = []): int
+    {
+        $commandTester = $this->getCommandTester();
+        $commandTester->execute(array_merge([
+            '--name' => self::NAME,
+            '--content' => 'Content',
+            '--checkbox_text' => 'I agree',
+        ], $options));
+
+        $this->assertSame(Command::SUCCESS, $commandTester->getStatusCode(), $commandTester->getDisplay());
+        $this->assertSame(1, preg_match('/Created agreement with ID (\d+)/', $commandTester->getDisplay(), $match));
+
+        return (int)$match[1];
     }
 
     private function getCommandTester(): CommandTester

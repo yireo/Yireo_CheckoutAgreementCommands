@@ -27,6 +27,29 @@ class ListAgreementsCommandTest extends TestCase
         $this->assertSame('checkout_agreement:list', $command->getName());
     }
 
+    public function testListsFlagsOfInactiveAutomaticHtmlAgreement(): void
+    {
+        $objectManager = Bootstrap::getObjectManager();
+        $agreement = $objectManager->get(AgreementInterfaceFactory::class)->create();
+        $agreement->setName('Yireo inactive HTML agreement');
+        $agreement->setContent('<p>Content</p>');
+        $agreement->setCheckboxText('I agree');
+        $agreement->setIsActive(false);
+        $agreement->setIsHtml(true);
+        $agreement->setMode(0);
+        $agreement = $objectManager->get(CheckoutAgreementsRepositoryInterface::class)->save($agreement, 1);
+
+        $commandTester = new CommandTester($objectManager->create(ListAgreementsCommand::class));
+        $commandTester->execute([], ['decorated' => false]);
+
+        $display = $commandTester->getDisplay();
+        $this->assertMatchesRegularExpression('/ID\s+\|\s+Name\s+\|\s+Mode\s+\|\s+Is Active\s+\|\s+Is HTML/', $display);
+        $this->assertMatchesRegularExpression(
+            '/\|\s+' . (int)$agreement->getAgreementId() . '\s+\|\s+Yireo inactive HTML agreement\s+\|\s+0\s+\|\s+0\s+\|\s+1\s+\|/',
+            $display
+        );
+    }
+
     public function testListsAgreementWithoutTerminalInjection(): void
     {
         $objectManager = Bootstrap::getObjectManager();
